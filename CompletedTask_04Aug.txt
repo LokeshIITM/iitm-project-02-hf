@@ -1,0 +1,70 @@
+Completed work till 4th August ai sas below
+✅ Project Setup Summary
+📁 1. Project Structure
+css
+Copy
+Edit
+Project_02/
+├── main.py
+├── utils/
+│   └── analysis.py
+├── data.csv
+└── questions.txt
+⚙️ 2. Installed Key Libraries
+bash
+Copy
+Edit
+pip install fastapi uvicorn pandas matplotlib python-multipart beautifulsoup4 requests
+🧠 3. Core Logic in main.py
+FastAPI backend
+
+/analyze POST endpoint
+
+Accepts:
+
+questions.txt (required)
+
+data.csv (optional)
+
+Calls process_questions() from utils.analysis
+
+Returns: JSON including results and a plot (base64 image)
+
+🧪 4. Analysis Logic in utils/analysis.py
+Parses natural language questions
+
+Supports:
+
+Average age calculation
+
+Correlation between age and fare
+
+Plotting scatter plot with red regression line
+
+Returns:
+
+List of textual results
+
+data:image/png;base64,... encoded image
+
+🔁 5. Swagger (docs) Working
+Opened at: http://127.0.0.1:8000/docs
+
+You uploaded both questions.txt and data.csv
+
+API returned correct JSON including:
+
+Text answers
+
+Base64 image plot
+
+🖼 6. Base64 Image View
+You copied base64 string into browser as a data: URL
+
+Verified image was rendered correctly
+
+✅ Overall Status:
+✔️ Working FastAPI backend
+✔️ Dynamic analysis + plotting
+✔️ Swagger UI tested successfully
+✔️ Ready for enhancement or deployment

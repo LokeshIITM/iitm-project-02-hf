@@ -1,0 +1,171 @@
+✅ Project Notes: Data Analyst Agent (LLM Project)
+📌 Objective
+Build and deploy an LLM-powered API that can act as a Data Analyst Agent, capable of:
+
+Reading natural language questions from questions.txt
+
+Optionally handling other files (CSV, JSON, images, PDFs)
+
+Scraping external data (e.g., Wikipedia)
+
+Performing statistical/dataframe analysis
+
+Generating and returning base64-encoded plots
+
+🚀 Project Scope Summary
+Task	Description
+API	Expose a POST endpoint
+Input	questions.txt (required) + optional files
+Output	JSON array or object with answers, incl. plots
+Time Limit	Response must be returned within 3 minutes
+Deployment	Host at a public URL accessible by anyone
+Submission	GitHub repo (public) + deployed API URL
+
+📦 Inputs and Output Format
+Example Input (POST request):
+
+questions.txt (ALWAYS required)
+
+Optional: data.csv, image.png, meta.json, .pdf files
+
+Example Output (as JSON):
+
+json
+Copy
+Edit
+[
+  1,
+  "Titanic",
+  0.485782,
+  "data:image/png;base64,..."
+]
+🧪 Evaluation Criteria
+Output must be a valid JSON array or object
+
+You’ll be tested on:
+
+✅ Correct values (exact match or regex)
+
+✅ Valid plot generation:
+
+Scatterplot
+
+Labeled axes
+
+Red dotted regression line
+
+Base64 PNG, under 100 KB
+
+No score normalization — your score is exactly what promptfoo gives
+
+🧱 Architecture Components
+Component	Toolset
+API Backend	FastAPI or Flask (Python)
+LLM Integration	AIPipe or AIProxy (proxy for OpenAI-like models)
+Data Analysis	pandas, numpy, duckdb, seaborn, matplotlib
+File Parsing	csv, json, pdfplumber, PyMuPDF, io, etc.
+Web Scraping	BeautifulSoup, requests, playwright
+Image Encoding	base64, BytesIO
+Deployment	Render, Railway, Fly.io, Hugging Face, or persistent ngrok
+Storage (Temp)	Local FS or /tmp/ (ephemeral)
+
+🔐 LLM Access via AIPipe / AIProxy
+Use these instead of direct OpenAI to stay within the $1/month quota.
+
+OpenAI	Replacement
+https://api.openai.com/v1	https://aipipe.org/openai/v1 or https://aiproxy.sanand.workers.dev/openai/
+OPENAI_API_KEY	AIPIPE_TOKEN or AIPROXY_TOKEN
+gpt-4.1-nano	openai/gpt-4.1-nano, google/gemini-2.0-flash-lite-001
+
+Example curl for AIPipe:
+
+bash
+Copy
+Edit
+curl https://aipipe.org/openrouter/v1/chat/completions \
+  -H "Authorization: Bearer $AIPIPE_TOKEN" \
+  -d '{
+    "model": "google/gemini-2.0-flash-lite-001",
+    "messages": [{"role": "user", "content": "What is 2+2?"}]
+  }'
+✅ Submission Requirements Checklist
+You must complete all the following:
+
+✅ GitHub repo exists and is public
+
+✅ MIT LICENSE file added at root
+
+✅ Code is committed and pushed
+
+✅ App deployed to publicly accessible URL
+
+✅ Submit both:
+
+GitHub repository URL
+
+Deployed API endpoint URL
+(at submission link when live)
+
+📌 Technical Access Checklist
+✅ Use Chrome browser
+
+✅ Enable JavaScript, cookies
+
+✅ Disable ad-blockers, tracking blockers, interfering extensions
+
+✅ Avoid overly strict antivirus
+
+✅ Submit with your official IITM email:
+22f3xxxxxx@ds.study.iitm.ac.in
+
+📊 Sample Tasks You Should Handle
+Type	Example Description
+Scraping	Fetch table from Wikipedia, parse it, analyze it
+Analysis	Correlations, rankings, regression from tabular data
+Plotting	Scatterplot + regression line + base64 return
+File Handling	Accept and parse .csv, .json, .parquet, .pdf
+Structured Queries	Run SQL over Indian court data via DuckDB
+
+🔗 External Data Sources
+📄 1. Wikipedia – Scraping Example
+URL:
+https://en.wikipedia.org/wiki/List_of_highest-grossing_films
+
+You must:
+
+Fetch and parse HTML tables
+
+Extract: Rank, Peak, Title, etc.
+
+Perform filtering, aggregation, plotting
+
+🏛️ 2. Indian High Court Judgement Dataset
+Hosted on S3 (public):
+https://s3.console.aws.amazon.com/s3/buckets/indian-high-court-judgments
+
+Used with DuckDB remote query:
+
+sql
+Copy
+Edit
+INSTALL httpfs;
+LOAD httpfs;
+
+INSTALL parquet;
+LOAD parquet;
+
+SELECT COUNT(*)
+FROM read_parquet(
+  's3://indian-high-court-judgments/metadata/parquet/' ||
+  'year=*/court=*/bench=*/metadata.parquet' ||
+  '?s3_region=ap-south-1'
+);
+Handles:
+
+Millions of rows of metadata
+
+Delay calculations (judgment date vs. registration)
+
+Court-wise and year-wise aggregations
+
+Visualizations of trends

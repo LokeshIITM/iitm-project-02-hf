@@ -1,0 +1,2 @@
+What is the average age of Titanic passengers?
+Plot age vs fare with regression line.
