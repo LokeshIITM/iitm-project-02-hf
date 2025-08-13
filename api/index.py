@@ -4,8 +4,8 @@ from fastapi.openapi.docs import get_swagger_ui_html
 import pandas as pd
 from io import BytesIO
 
-# Your analysis logic
-from utils.analysis import process_questions
+# Import your analysis functions
+from utils.analysis import process_questions, fetch_wiki_top_films
 
 # -------------------------------------------------------------------
 # App
@@ -17,7 +17,15 @@ app = FastAPI(
 )
 
 # -------------------------------------------------------------------
-# Core endpoint
+# Wikipedia endpoint
+# -------------------------------------------------------------------
+@app.get("/wiki")
+def get_wiki_films(n: int = 10):
+    results = fetch_wiki_top_films(n)
+    return JSONResponse(results)
+
+# -------------------------------------------------------------------
+# Core endpoint (file-upload analysis)
 # -------------------------------------------------------------------
 @app.post("/analyze")
 async def analyze_data(
@@ -53,10 +61,7 @@ def go_to_docs():
 # -------------------------------------------------------------------
 @app.get("/docs", include_in_schema=False)
 def overridden_swagger():
-    return get_swagger_ui_html(
-        openapi_url="/openapi.json",
-        title="Swagger UI"
-    )
+    return get_swagger_ui_html(openapi_url="/openapi.json", title="Swagger UI")
 
 # -------------------------------------------------------------------
 # Local dev entry point
