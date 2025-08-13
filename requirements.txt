@@ -7,3 +7,4 @@ requests==2.27.1
 beautifulsoup4==4.13.4
 python-multipart
 lxml
+duckdb
