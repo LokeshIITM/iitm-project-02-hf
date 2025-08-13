@@ -1,7 +1,6 @@
-from fastapi import FastAPI, UploadFile, File, Request
+from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.openapi.docs import get_swagger_ui_html
-from urllib.parse import urlsplit, urlunsplit
 import pandas as pd
 from io import BytesIO
 
@@ -35,32 +34,32 @@ async def analyze_data(
     results = process_questions(questions_text, df)
     return JSONResponse(results)
 
+# -------------------------------------------------------------------
 # Optional health check
+# -------------------------------------------------------------------
 @app.get("/healthz")
 def healthz():
     return {"status": "ok"}
 
 # -------------------------------------------------------------------
-# Redirect root to Swagger docs
+# Redirect root to Swagger docs (static redirect)
 # -------------------------------------------------------------------
 @app.get("/", include_in_schema=False)
-def go_to_docs(request: Request):
-    parts = urlsplit(str(request.base_url))
-    https_base = urlunsplit(("https", parts.netloc, "", "", ""))
-    return RedirectResponse(url=https_base + "docs", status_code=307)
+def go_to_docs():
+    return RedirectResponse(url="/docs")
 
 # -------------------------------------------------------------------
-# Force Swagger UI with absolute OpenAPI URL (works in proxy/iframe)
+# Force Swagger UI with absolute OpenAPI URL (optional tweak)
 # -------------------------------------------------------------------
 @app.get("/docs", include_in_schema=False)
-def overridden_swagger(request: Request):
-    parts = urlsplit(str(request.base_url))
-    https_base = urlunsplit(("https", parts.netloc, "", "", ""))
-    openapi_abs = https_base + "openapi.json"
-    return get_swagger_ui_html(openapi_url=openapi_abs, title="Swagger UI")
+def overridden_swagger():
+    return get_swagger_ui_html(
+        openapi_url="/openapi.json",
+        title="Swagger UI"
+    )
 
 # -------------------------------------------------------------------
-# Local dev entry point (ignored by Vercel)
+# Local dev entry point
 # -------------------------------------------------------------------
 if __name__ == "__main__":
     import uvicorn
