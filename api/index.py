@@ -18,9 +18,9 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# ---- LLM config (AIPipe / AiProxy – OpenAI-compatible) ----
+# ---- LLM config ----
 AIPIPE_BASE = os.getenv("AIPIPE_BASE", "https://aipipe.org/openrouter/v1")
-AIPIPE_TOKEN = os.getenv("AIPIPE_TOKEN")  # set in your terminal/shell
+AIPIPE_TOKEN = os.getenv("AIPIPE_TOKEN")
 AIPIPE_MODEL = os.getenv("AIPIPE_MODEL", "google/gemini-2.0-flash-lite-001")
 
 
@@ -34,7 +34,7 @@ def _read_dataframe(upload: UploadFile | None) -> pd.DataFrame | None:
             return pd.read_csv(io.BytesIO(raw))
         if name.endswith(".xlsx") or name.endswith(".xls"):
             return pd.read_excel(io.BytesIO(raw))
-        return pd.read_csv(io.BytesIO(raw))  # Fallback
+        return pd.read_csv(io.BytesIO(raw))  # fallback
     except Exception:
         return None
 
@@ -56,8 +56,8 @@ def _coerce_numeric_strings(seq):
         if isinstance(v, str) and re.fullmatch(r"-?\d+(?:\.\d+)?", v):
             if "." in v:
                 x = float(v)
-                if i == 2:
-                    x = float(f"{x:.6f}")  # ensure 6 dp for correlation element
+                if i == 3:  # correlation element
+                    x = float(f"{x:.6f}")
                 out.append(x)
             else:
                 out.append(int(v))
@@ -111,25 +111,22 @@ def get_wiki_films(n: int = 10):
 # --------------- Core endpoint (file upload) ----------
 @app.post("/analyze")
 async def analyze_data(questions: UploadFile = File(...), data: UploadFile | None = File(None)):
+    # Read questions.txt
     try:
         questions_text = (await questions.read()).decode("utf-8", errors="ignore")
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid questions.txt: {e}")
 
-    qlower = questions_text.lower()
-    if ("wikipedia.org/wiki/list_of_highest-grossing_films" in qlower) or ("highest grossing films" in qlower):
-        try:
-            from utils.analysis import answer_wiki_film_questions
-            answers = answer_wiki_film_questions()
-            answers = _coerce_numeric_strings(answers)
-            return JSONResponse(answers)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Wikipedia handler failed: {e}")
-
+    # Read optional data file (csv/xlsx)
     df = _read_dataframe(data) if data else None
+
+    # Deterministic calculations/plot
     rule_based = process_questions(questions_text, df)
+
+    # LLM summary FIRST
     llm_answer = call_llm(questions_text, df)
 
+    # JSON array per spec
     payload = [llm_answer, *rule_based]
     payload = _coerce_numeric_strings(payload)
     return JSONResponse(payload)
@@ -163,5 +160,5 @@ def overridden_swagger():
 # ---------------- Entrypoint --------------------------
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 7860))  # ✅ read Hugging Face $PORT
+    port = int(os.environ.get("PORT", 7860))  # Hugging Face injects PORT
     uvicorn.run("api.index:app", host="0.0.0.0", port=port)

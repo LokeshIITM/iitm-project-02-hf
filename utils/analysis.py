@@ -5,7 +5,6 @@ os.environ.setdefault("MPLCONFIGDIR", "/tmp")  # avoid MPL cache warning in read
 import base64
 from io import BytesIO
 from typing import List, Dict, Optional
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -18,7 +17,6 @@ def _figure_to_base64(fig) -> str:
     """Encode a Matplotlib figure to a base64 PNG (kept compact)."""
     buf = BytesIO()
     plt.tight_layout()
-    # Slightly lower DPI + bbox_inches to help keep under ~100 KB
     fig.savefig(buf, format="png", dpi=90, bbox_inches="tight")
     buf.seek(0)
     b64 = base64.b64encode(buf.read()).decode("utf-8")
@@ -36,7 +34,6 @@ def fetch_wiki_top_films(n: int = 10) -> List[Dict]:
     """
     url = "https://en.wikipedia.org/wiki/List_of_highest-grossing_films"
     tables = pd.read_html(url)  # requires lxml
-    # Find a table that has Rank and Title columns (case-insensitive)
     chosen = None
     for t in tables:
         cols = {str(c).strip().lower() for c in t.columns}
@@ -46,73 +43,71 @@ def fetch_wiki_top_films(n: int = 10) -> List[Dict]:
     if chosen is None and tables:
         chosen = tables[0]
 
-    # Standardize column names a bit (optional)
     chosen = chosen.copy()
     chosen.columns = [str(c).strip() for c in chosen.columns]
 
-    # Keep top n rows
-    n = max(1, int(n))
-    out = chosen.head(n).to_dict(orient="records")
-    return out
+    return chosen.head(max(1, int(n))).to_dict(orient="records")
 
 
 # ----------------------------
-# Titanic-style example analysis (for /analyze with CSV)
+# Deterministic Titanic-style analysis
 # ----------------------------
 def process_questions(questions_text: str, df: Optional[pd.DataFrame]) -> list:
     """
-    Handle simple analysis queries against an optional DataFrame.
-    Returns a list with strings/numbers/base64 image strings.
-      - If df is None -> ["No data provided."]
-      - If 'average age' in questions and 'age' column exists -> append avg string
-      - If 'plot age vs fare' and both columns exist -> append correlation + base64 PNG
+    Always return [row_count, avg_age, correlation, base64_plot].
+    - row_count: int
+    - avg_age: float (2 decimals)
+    - correlation: float (6 decimals)
+    - base64_plot: scatterplot with red dotted regression line
     """
-    questions_text = (questions_text or "").lower()
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return [0, 0.0, 0.0, "data:image/png;base64,"]
+
     results: list = []
 
-    if df is None or not isinstance(df, pd.DataFrame):
-        results.append("No data provided.")
-        return results
+    # 1) Row count
+    row_count = int(len(df))
+    results.append(row_count)
 
-    # 1) Average age
-    if "average age" in questions_text and "age" in df.columns:
+    # 2) Average age
+    avg_age = 0.0
+    if "age" in df.columns:
         try:
-            avg = float(round(df["age"].astype(float).mean(), 2))
-            results.append(f"The average age of passengers is {avg}.")
+            avg_age = float(round(df["age"].astype(float).mean(), 2))
         except Exception:
-            results.append("Could not compute average age due to invalid data types.")
+            pass
+    results.append(avg_age)
 
-    # 2) Scatter + red dotted regression line for Age vs Fare
-    if "plot age vs fare" in questions_text and {"age", "fare"}.issubset(df.columns):
-        sub = df[["age", "fare"]].dropna()
-        if not sub.empty:
-            try:
-                x = sub["age"].astype(float).to_numpy()
-                y = sub["fare"].astype(float).to_numpy()
+    # 3) Correlation (age vs fare)
+    corr = 0.0
+    if {"age", "fare"}.issubset(df.columns):
+        try:
+            sub = df[["age", "fare"]].dropna()
+            if not sub.empty and sub["age"].nunique() > 1 and sub["fare"].nunique() > 1:
+                corr = float(pd.Series(sub["age"].astype(float)).corr(pd.Series(sub["fare"].astype(float))))
+        except Exception:
+            pass
+    results.append(round(corr, 6))
 
-                # Pearson correlation
-                corr = float(pd.Series(x).corr(pd.Series(y)))
-                results.append(f"The correlation between age and fare is {corr:.6f}.")
+    # 4) Plot (scatter + regression line)
+    plot_b64 = "data:image/png;base64,"
+    if {"age", "fare"}.issubset(df.columns):
+        try:
+            x = df["age"].astype(float).to_numpy()
+            y = df["fare"].astype(float).to_numpy()
+            m, b = np.polyfit(x, y, 1)
 
-                # Regression line (least squares)
-                m, b = np.polyfit(x, y, 1)
-
-                # Plot
-                fig, ax = plt.subplots(figsize=(5, 4))
-                ax.scatter(x, y, s=10)                   # points
-                xs = np.sort(x)  # ensure monotonic x for a clean line
-                ax.plot(xs, m * xs + b, linestyle=':', linewidth=2, color='red')  # red dotted regression
-                ax.set_xlabel("Age")
-                ax.set_ylabel("Fare")
-                ax.set_title("Age vs Fare")
-
-                # Encode figure
-                image_b64 = _figure_to_base64(fig)
-                results.append(image_b64)
-            except Exception:
-                results.append("Failed to generate Age vs Fare plot due to bad data.")
-        else:
-            results.append("Not enough data to plot age vs fare (after dropping NaNs).")
+            fig, ax = plt.subplots(figsize=(5, 4))
+            ax.scatter(x, y, s=10)
+            xs = np.sort(x)
+            ax.plot(xs, m * xs + b, linestyle=":", linewidth=2, color="red")
+            ax.set_xlabel("Age")
+            ax.set_ylabel("Fare")
+            ax.set_title("Age vs Fare")
+            plot_b64 = _figure_to_base64(fig)
+        except Exception:
+            pass
+    results.append(plot_b64)
 
     return results
 
@@ -121,12 +116,9 @@ def process_questions(questions_text: str, df: Optional[pd.DataFrame]) -> list:
 # Helpers for robust parsing from Wikipedia table
 # ----------------------------
 def _num_from_money(val) -> float:
-    """Parse money strings like '$2,923,706,026' -> 2923706026.0"""
     if pd.isna(val):
         return float('nan')
-    s = str(val)
-    # Remove everything except digits and dot
-    s = "".join(ch for ch in s if ch.isdigit() or ch == ".")
+    s = "".join(ch for ch in str(val) if ch.isdigit() or ch == ".")
     try:
         return float(s) if s else float('nan')
     except Exception:
@@ -134,7 +126,6 @@ def _num_from_money(val) -> float:
 
 
 def _num_from_intlike(val) -> float:
-    """Parse int-ish strings like '1' or '1[nb 2]' -> 1.0"""
     if pd.isna(val):
         return float('nan')
     s = "".join(ch for ch in str(val) if ch.isdigit())
@@ -145,7 +136,6 @@ def _num_from_intlike(val) -> float:
 
 
 def _year_from_any(val) -> float:
-    """Extract a 4-digit year like '1997[1]' -> 1997.0 (bounds 1870..2100)."""
     if pd.isna(val):
         return float('nan')
     s = str(val)
@@ -174,13 +164,11 @@ def answer_wiki_film_questions() -> List[str]:
     tables = pd.read_html(url)  # needs lxml
 
     chosen = None
-    # Prefer a table that clearly has these columns
     for t in tables:
         cols = {str(c).strip().lower() for c in t.columns}
         if {"rank", "peak", "title"}.issubset(cols) and any("gross" in c for c in cols) and "year" in cols:
             chosen = t
             break
-    # Fallbacks
     if chosen is None:
         for t in tables:
             cols = {str(c).strip().lower() for c in t.columns}
@@ -193,7 +181,6 @@ def answer_wiki_film_questions() -> List[str]:
     df = chosen.copy()
     df.columns = [str(c).strip() for c in df.columns]
 
-    # Resolve best-matching column names flexibly
     def col_like(options):
         for name in df.columns:
             low = name.lower()
@@ -208,7 +195,6 @@ def answer_wiki_film_questions() -> List[str]:
     col_year  = col_like(["year"])
     col_gross = col_like(["worldwide gross", "global", "gross"])
 
-    # Numeric coercions
     if col_rank: df["_rank"] = df[col_rank].map(_num_from_intlike)
     if col_peak: df["_peak"] = df[col_peak].map(_num_from_intlike)
     if col_year: df["_year"] = df[col_year].map(_year_from_any)
@@ -221,7 +207,7 @@ def answer_wiki_film_questions() -> List[str]:
     else:
         ans1 = "0"
 
-    # 2) Earliest film > $1.5bn (by year)
+    # 2) Earliest film > $1.5bn
     if "_gross" in df and "_year" in df and col_title:
         over = df[df["_gross"] >= 1_500_000_000].dropna(subset=["_year"])
         if not over.empty:
@@ -243,13 +229,12 @@ def answer_wiki_film_questions() -> List[str]:
     else:
         ans3 = "0.000000"
 
-    # 4) Scatter Rank vs Peak, dotted red regression line
+    # 4) Scatter Rank vs Peak
     if "_rank" in df and "_peak" in df:
         sub = df[["_rank", "_peak"]].dropna()
         if not sub.empty:
             x = sub["_rank"].astype(float).to_numpy()
             y = sub["_peak"].astype(float).to_numpy()
-            # Regression
             try:
                 m, b = np.polyfit(x, y, 1)
             except Exception:
