@@ -90,7 +90,9 @@ def process_questions(questions_text: str, df: Optional[pd.DataFrame]) -> list:
                 # Plot
                 fig, ax = plt.subplots(figsize=(5, 4))
                 ax.scatter(x, y, s=10)                   # points
-                ax.plot(x, m * x + b, "r--", linewidth=2)  # red dotted regression
+                xs = np.sort(x)  # ensure monotonic x for a clean line
+                # ax.plot(x, m * x + b, "r--", linewidth=2)  # red dotted regression
+                ax.plot(xs, m * xs + b, linestyle=':', linewidth=2, color='red')  # red dotted regression
                 ax.set_xlabel("Age")
                 ax.set_ylabel("Fare")
                 ax.set_title("Age vs Fare")
