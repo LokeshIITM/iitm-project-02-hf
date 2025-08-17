@@ -11,5 +11,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 EXPOSE 7860
 # IMPORTANT: do NOT set ENV PORT here. HF injects PORT at runtime.
-CMD bash -lc "python -m uvicorn api.index:app --host 0.0.0.0 --port $PORT"
+CMD ["python", "-m", "api.index"]
 
