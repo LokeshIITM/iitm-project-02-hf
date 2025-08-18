@@ -20,10 +20,11 @@ def main():
     with open("questions.txt", "rb") as qf, open(csvfile, "rb") as df:
         files = {
             "questions": ("questions.txt", qf, "text/plain"),
-            # send the actual filename (titanic.csv, sales.csv, weather.csv, etc.)
             "data": (os.path.basename(csvfile), df, "text/csv"),
         }
-        r = requests.post(ANALYZE_URL, files=files, timeout=120)
+        # explicitly send eval mode
+        data = {"mode": "eval"}
+        r = requests.post(ANALYZE_URL, files=files, data=data, timeout=120)
 
     print("Status:", r.status_code)
     print("Response:")
