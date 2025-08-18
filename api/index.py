@@ -16,7 +16,7 @@ from utils.analysis import fetch_wiki_top_films
 app = FastAPI(
     title="Data Analyst Agent API",
     description="Upload questions.txt (and optionally data.csv/.xlsx) to get analysis via LLM",
-    version="2.1.0",
+    version="2.2.0",
 )
 
 # ---- LLM config ----
@@ -173,6 +173,10 @@ Network:
         if llm_output.startswith("```"):
             llm_output = llm_output.strip("`")
             llm_output = llm_output.replace("json\n", "").replace("json", "").strip()
+
+        # Auto-fix: if model forgot closing brace
+        if not llm_output.endswith("}"):
+            llm_output = llm_output + "}"
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM request failed: {e}")
