@@ -8,6 +8,7 @@ from typing import List, Dict, Optional
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import networkx as nx   # NEW for graph metrics
 
 
 # ----------------------------
@@ -254,3 +255,172 @@ def answer_wiki_film_questions() -> List[str]:
         ans4 = "data:image/png;base64,"
 
     return [ans1, ans2, ans3, ans4]
+
+
+# ----------------------------
+# New: Sales Analysis
+# ----------------------------
+def analyze_sales(df: pd.DataFrame) -> list:
+    """
+    Return [total_sales, top_region, day_sales_correlation,
+            median_sales, total_sales_tax, bar_chart_base64]
+    """
+    if df is None or df.empty:
+        return [0, "", 0.0, 0.0, 0.0, "data:image/png;base64,"]
+
+    results = []
+
+    # 1) Total sales
+    total_sales = int(df["sales"].sum())
+    results.append(total_sales)
+
+    # 2) Top region
+    top_region = df.groupby("region")["sales"].sum().idxmax()
+    results.append(str(top_region))
+
+    # 3) Correlation (day vs sales)
+    corr = 0.0
+    if {"day", "sales"}.issubset(df.columns):
+        sub = df[["day", "sales"]].dropna()
+        if not sub.empty and sub["day"].nunique() > 1:
+            corr = float(sub["day"].astype(float).corr(sub["sales"].astype(float)))
+    results.append(round(corr, 4))
+
+    # 4) Median sales
+    median_sales = float(df["sales"].median())
+    results.append(int(median_sales))
+
+    # 5) Total sales tax (10%)
+    total_sales_tax = int(round(total_sales * 0.1))
+    results.append(total_sales_tax)
+
+    # 6) Plot (bar chart by region)
+    plot_b64 = "data:image/png;base64,"
+    try:
+        region_sales = df.groupby("region")["sales"].sum()
+        fig, ax = plt.subplots(figsize=(5, 4))
+        region_sales.plot(kind="bar", ax=ax)
+        ax.set_xlabel("Region")
+        ax.set_ylabel("Total Sales")
+        ax.set_title("Sales by Region")
+        plot_b64 = _figure_to_base64(fig)
+    except Exception:
+        pass
+    results.append(plot_b64)
+
+    return results
+
+
+# ----------------------------
+# New: Network Analysis
+# ----------------------------
+def analyze_network(df: pd.DataFrame) -> list:
+    """
+    Compute graph metrics from edge list.
+    Return [edge_count, highest_degree_node, degree_histogram_plot, network_plot]
+    """
+    if df is None or df.empty or not {"source", "target"}.issubset(df.columns.str.lower()):
+        return [0, "", "data:image/png;base64,", "data:image/png;base64,"]
+
+    # Normalize column names
+    df = df.rename(columns={c.lower(): c for c in df.columns})
+    G = nx.from_pandas_edgelist(df, source="source", target="target")
+
+    results = []
+
+    # 1) Edge count
+    edge_count = G.number_of_edges()
+    results.append(edge_count)
+
+    # 2) Highest degree node
+    if G.number_of_nodes() > 0:
+        node, deg = max(G.degree, key=lambda x: x[1])
+        results.append(str(node))
+    else:
+        results.append("")
+
+    # 3) Degree histogram plot
+    degrees = [d for _, d in G.degree()]
+    fig1, ax1 = plt.subplots(figsize=(5, 4))
+    ax1.hist(degrees, bins=range(1, max(degrees)+2))
+    ax1.set_xlabel("Degree")
+    ax1.set_ylabel("Frequency")
+    ax1.set_title("Degree Histogram")
+    hist_b64 = _figure_to_base64(fig1)
+    results.append(hist_b64)
+
+    # 4) Network plot
+    fig2, ax2 = plt.subplots(figsize=(5, 4))
+    pos = nx.spring_layout(G, seed=42)
+    nx.draw(G, pos, ax=ax2, node_size=50, with_labels=False)
+    ax2.set_title("Network Graph")
+    net_b64 = _figure_to_base64(fig2)
+    results.append(net_b64)
+
+    return results
+# ----------------------------
+# New: Weather Analysis
+# ----------------------------
+def analyze_weather(df: pd.DataFrame) -> list:
+    """
+    Compute weather stats:
+      - average_temp_c (float, 1 decimal)
+      - max_precip_date (string, YYYY-MM-DD)
+      - min_temp_c (int)
+      - temp_precip_correlation (float, 5 decimals)
+      - average_precip_mm (float, 1 decimal)
+      - 2 plots: temperature trend, precipitation trend
+    """
+    if df is None or df.empty or not {"date", "temp_c", "precip_mm"}.issubset(df.columns.str.lower()):
+        return [0.0, "", 0.0, 0.0, 0.0, "data:image/png;base64,", "data:image/png;base64,"]
+
+    # Normalize column names
+    df = df.rename(columns={c.lower(): c for c in df.columns})
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date", "temp_c", "precip_mm"]).copy()
+
+    results = []
+
+    # 1) Average temperature (1 decimal)
+    avg_temp = round(df["temp_c"].astype(float).mean(), 1)
+    results.append(avg_temp)
+
+    # 2) Date with maximum precipitation
+    idx = df["precip_mm"].astype(float).idxmax()
+    max_precip_date = str(df.loc[idx, "date"].date()) if pd.notna(idx) else ""
+    results.append(max_precip_date)
+
+    # 3) Minimum temperature
+    min_temp = int(df["temp_c"].astype(float).min())
+    results.append(min_temp)
+
+    # 4) Correlation between temp and precip (5 decimals)
+    corr = 0.0
+    sub = df[["temp_c", "precip_mm"]].dropna()
+    if not sub.empty and sub["temp_c"].nunique() > 1 and sub["precip_mm"].nunique() > 1:
+        corr = float(sub["temp_c"].astype(float).corr(sub["precip_mm"].astype(float)))
+    results.append(round(corr, 5))
+
+    # 5) Average precipitation (1 decimal)
+    avg_precip = round(df["precip_mm"].astype(float).mean(), 1)
+    results.append(avg_precip)
+
+    # 6) Plot: temperature trend line
+    fig1, ax1 = plt.subplots(figsize=(5, 4))
+    ax1.plot(df["date"], df["temp_c"], marker="o", linestyle="-")
+    ax1.set_xlabel("Date")
+    ax1.set_ylabel("Temp (°C)")
+    ax1.set_title("Daily Temperature")
+    temp_plot = _figure_to_base64(fig1)
+
+    # 7) Plot: precipitation trend line
+    fig2, ax2 = plt.subplots(figsize=(5, 4))
+    ax2.plot(df["date"], df["precip_mm"], marker="s", linestyle="-", color="blue")
+    ax2.set_xlabel("Date")
+    ax2.set_ylabel("Precip (mm)")
+    ax2.set_title("Daily Precipitation")
+    precip_plot = _figure_to_base64(fig2)
+
+    results.extend([temp_plot, precip_plot])
+
+    return results

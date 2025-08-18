@@ -10,7 +10,13 @@ import io
 import re
 import requests
 
-from utils.analysis import process_questions, fetch_wiki_top_films
+from utils.analysis import (
+    process_questions,
+    fetch_wiki_top_films,
+    analyze_sales,
+    analyze_network,
+    analyze_weather,  # to add later
+)
 
 app = FastAPI(
     title="Data Analyst Agent API",
@@ -120,8 +126,26 @@ async def analyze_data(questions: UploadFile = File(...), data: UploadFile | Non
     # Read optional data file (csv/xlsx)
     df = _read_dataframe(data) if data else None
 
-    # Deterministic calculations/plot
-    rule_based = process_questions(questions_text, df)
+    # --- Scenario branching (by columns) ---
+    rule_based = []
+    if df is not None and not df.empty:
+        cols = set(df.columns.str.lower())
+        if {"age", "fare"}.issubset(cols):
+            # Titanic dataset
+            rule_based = process_questions(questions_text, df)
+        elif {"day", "region", "sales"}.issubset(cols):
+            # Sales dataset
+            rule_based = analyze_sales(df)
+        elif {"source", "target"}.issubset(cols):
+            # Network dataset
+            rule_based = analyze_network(df)
+        elif {"date", "temp_c", "precip_mm"}.issubset(cols):
+            # Weather dataset (to implement next)
+            rule_based = analyze_weather(df)
+        else:
+            rule_based = ["Unknown dataset format"]
+    else:
+        rule_based = process_questions(questions_text, df)  # fallback
 
     # LLM summary FIRST
     llm_answer = call_llm(questions_text, df)

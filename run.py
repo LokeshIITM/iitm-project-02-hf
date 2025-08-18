@@ -1,0 +1,33 @@
+# run.py
+import os, sys, requests
+
+SPACE_URL = "https://lokeshiitm-iitm-project-fastapi-02.hf.space"
+ANALYZE_URL = f"{SPACE_URL.rstrip('/')}/analyze"
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python run.py <csvfile>")
+        sys.exit(1)
+
+    csvfile = sys.argv[1]
+    if not os.path.exists("questions.txt"):
+        print("questions.txt not found")
+        sys.exit(1)
+    if not os.path.exists(csvfile):
+        print(f"{csvfile} not found")
+        sys.exit(1)
+
+    with open("questions.txt", "rb") as qf, open(csvfile, "rb") as df:
+        files = {
+            "questions": ("questions.txt", qf, "text/plain"),
+            # send the actual filename (titanic.csv, sales.csv, weather.csv, etc.)
+            "data": (os.path.basename(csvfile), df, "text/csv"),
+        }
+        r = requests.post(ANALYZE_URL, files=files, timeout=120)
+
+    print("Status:", r.status_code)
+    print("Response:")
+    print(r.text)
+
+if __name__ == "__main__":
+    main()
