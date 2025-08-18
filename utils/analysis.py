@@ -7,6 +7,8 @@ from io import BytesIO
 from typing import List, Dict
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
+import networkx as nx
 
 
 # ----------------------------
@@ -21,6 +23,95 @@ def _figure_to_base64(fig) -> str:
     b64 = base64.b64encode(buf.read()).decode("utf-8")
     plt.close(fig)
     return f"data:image/png;base64,{b64}"
+
+
+# ----------------------------
+# Auto analysis (generic, dtype-driven)
+# ----------------------------
+def auto_analyze(df: pd.DataFrame) -> dict:
+    if df is None or df.empty:
+        return {"error": "Empty dataset"}
+
+    # Try to coerce date-like columns
+    for col in df.columns:
+        if df[col].dtype == object:
+            try:
+                df[col] = pd.to_datetime(df[col])
+            except Exception:
+                pass
+
+    num_cols = df.select_dtypes(include="number").columns.tolist()
+    cat_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
+    date_cols = df.select_dtypes(include=["datetime64[ns]"]).columns.tolist()
+
+    out = {
+        "row_count": len(df),
+        "columns": list(df.columns),
+        "stats": {},
+        "plots": []
+    }
+
+    # ---- numeric summaries ----
+    for col in num_cols:
+        out["stats"][col] = {
+            "mean": float(df[col].mean()),
+            "median": float(df[col].median()),
+            "std": float(df[col].std())
+        }
+        # histogram
+        fig, ax = plt.subplots()
+        df[col].hist(ax=ax)
+        ax.set_title(f"Histogram of {col}")
+        out["plots"].append(_figure_to_base64(fig))
+
+    # ---- scatter + regression line (if ≥2 numeric) ----
+    if len(num_cols) >= 2:
+        x, y = num_cols[:2]
+        corr = df[[x, y]].corr().iloc[0, 1]
+        out["stats"]["correlation"] = {f"{x}-{y}": round(float(corr), 4)}
+
+        fig, ax = plt.subplots()
+        ax.scatter(df[x], df[y], alpha=0.5)
+
+        # regression line
+        xs = np.sort(df[x].dropna())
+        if len(xs) > 1:
+            coeffs = np.polyfit(df[x].dropna(), df[y].dropna(), 1)
+            ys = np.polyval(coeffs, xs)
+            ax.plot(xs, ys, linestyle=":", color="red", label="Regression line")
+
+        ax.set_xlabel(x)
+        ax.set_ylabel(y)
+        ax.set_title(f"{x} vs {y}")
+        ax.legend()
+        out["plots"].append(_figure_to_base64(fig))
+
+    # ---- category vs numeric (bar) ----
+    if num_cols and cat_cols:
+        n, c = num_cols[0], cat_cols[0]
+        fig, ax = plt.subplots()
+        df.groupby(c)[n].mean().plot(kind="bar", ax=ax)
+        ax.set_title(f"Mean {n} by {c}")
+        out["plots"].append(_figure_to_base64(fig))
+
+    # ---- datetime vs numeric (line) ----
+    if num_cols and date_cols:
+        n, d = num_cols[0], date_cols[0]
+        fig, ax = plt.subplots()
+        ax.plot(df[d], df[n], marker="o")
+        ax.set_title(f"{n} over {d}")
+        out["plots"].append(_figure_to_base64(fig))
+
+    # ---- network-like (if 2+ string cols, no numerics) ----
+    if len(cat_cols) >= 2 and not num_cols:
+        src, tgt = cat_cols[:2]
+        G = nx.from_pandas_edgelist(df, source=src, target=tgt)
+
+        fig, ax = plt.subplots()
+        nx.draw(G, with_labels=True, node_size=500, ax=ax)
+        out["plots"].append(_figure_to_base64(fig))
+
+    return out
 
 
 # ----------------------------
