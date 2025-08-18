@@ -168,6 +168,12 @@ Network:
         r.raise_for_status()
         data = r.json()
         llm_output = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+
+        # Cleanup: remove markdown fences if model wrapped output
+        if llm_output.startswith("```"):
+            llm_output = llm_output.strip("`")
+            llm_output = llm_output.replace("json\n", "").replace("json", "").strip()
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM request failed: {e}")
 
