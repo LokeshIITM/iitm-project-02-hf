@@ -1,8 +1,12 @@
 fastapi
 uvicorn
 pandas==2.2.2
+numpy==1.26.4
 matplotlib==3.7.2
 requests==2.31.0
+beautifulsoup4==4.12.3
+charset-normalizer==3.3.2
 python-multipart
 lxml
 duckdb
+networkx
