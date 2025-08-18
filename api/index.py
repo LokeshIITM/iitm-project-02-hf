@@ -16,7 +16,7 @@ from utils.analysis import fetch_wiki_top_films, auto_analyze
 app = FastAPI(
     title="Data Analyst Agent API",
     description="Upload questions.txt (and optionally data.csv/.xlsx) to get analysis via LLM + pandas",
-    version="3.0.0",
+    version="3.1.0",
 )
 
 # ---- LLM config ----
@@ -75,20 +75,10 @@ async def analyze_data(
     df = _read_dataframe(data) if data else None
     preview = _df_preview(df)
 
-    if mode == "eval":
-        # dummy JSON for harness
-        return JSONResponse({
-            "total_sales": 0,
-            "top_region": "string",
-            "day_sales_correlation": 0.0,
-            "median_sales": 0,
-            "total_sales_tax": 0,
-            "bar_chart": "data:image/png;base64,..."
-        })
+    # -------------------------
+    # Always do real analysis (both eval & play)
+    # -------------------------
 
-    # -------------------------
-    # Real analysis path
-    # -------------------------
     # Ask LLM: only decide dataset type
     schema_instruction = """
 You are a precise data analyst agent.
@@ -106,9 +96,20 @@ Task:
             {"role": "system", "content": schema_instruction},
             {"role": "user", "content": user_prompt},
         ],
-        "temperature": 0,
         "max_tokens": max_tokens,
     }
+
+    # Strict if eval, else play with knobs
+    if mode == "eval":
+        payload.update({"temperature": 0})
+    else:
+        payload.update({
+            "temperature": temperature,
+            "top_p": top_p,
+            "top_k": top_k,
+            "presence_penalty": presence_penalty,
+            "frequency_penalty": frequency_penalty,
+        })
 
     dataset_type = "Generic"
     try:
