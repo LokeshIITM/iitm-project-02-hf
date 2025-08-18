@@ -7,7 +7,6 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.openapi.docs import get_swagger_ui_html
 import pandas as pd
 import io
-import re
 import requests
 import json
 
@@ -17,7 +16,7 @@ from utils.analysis import fetch_wiki_top_films
 app = FastAPI(
     title="Data Analyst Agent API",
     description="Upload questions.txt (and optionally data.csv/.xlsx) to get analysis via LLM",
-    version="2.0.0",
+    version="2.1.0",
 )
 
 # ---- LLM config ----
@@ -77,13 +76,65 @@ async def analyze_data(
     df = _read_dataframe(data) if data else None
     preview = _df_preview(df)
 
-    # Prompt for LLM
+    # Unified schema instruction
+    schema_instruction = """
+You are a precise data analyst agent.
+
+Task:
+- Read questions.txt and the dataset preview.
+- Determine which dataset type it is (Sales, Weather, Network, Titanic).
+- Return ONLY a valid JSON object with exactly the following keys for that type.
+- Do not include text, Markdown, or code fences. Only JSON.
+
+Schemas:
+
+Sales:
+{
+  "total_sales": int,
+  "top_region": string,
+  "day_sales_correlation": float (4 decimals),
+  "median_sales": int,
+  "total_sales_tax": int,
+  "bar_chart": "data:image/png;base64,..."
+}
+
+Weather:
+{
+  "average_temp_c": float (1 decimal),
+  "max_precip_date": "YYYY-MM-DD",
+  "min_temp_c": int,
+  "temp_precip_correlation": float (5 decimals),
+  "average_precip_mm": float (1 decimal),
+  "temp_plot": "data:image/png;base64,...",
+  "precip_plot": "data:image/png;base64,..."
+}
+
+Titanic:
+{
+  "row_count": int,
+  "avg_age": float (2 decimals),
+  "age_fare_correlation": float (6 decimals),
+  "scatter_plot": "data:image/png;base64,..."
+}
+
+Network:
+{
+  "edge_count": int,
+  "highest_degree_node": string,
+  "average_degree": float (2 decimals),
+  "density": float (2 decimals),
+  "shortest_path_alice_eve": int,
+  "degree_histogram": "data:image/png;base64,...",
+  "network_graph": "data:image/png;base64,..."
+}
+"""
+
     user_prompt = f"questions.txt:\n{questions_text}\n\nData preview:\n{preview}"
 
     payload = {
         "model": AIPIPE_MODEL,
         "messages": [
-            {"role": "system", "content": "You are a data analyst agent. Return JSON only with the required keys."},
+            {"role": "system", "content": schema_instruction},
             {"role": "user", "content": user_prompt},
         ],
         "max_tokens": max_tokens,

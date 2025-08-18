@@ -8,8 +8,9 @@ from typing import List, Dict
 import pandas as pd
 import matplotlib.pyplot as plt
 
+
 # ----------------------------
-# Plot utility (may be used if LLM output needs plotting help)
+# Plot utility
 # ----------------------------
 def _figure_to_base64(fig) -> str:
     """Encode a Matplotlib figure to a base64 PNG (kept compact)."""
@@ -23,7 +24,7 @@ def _figure_to_base64(fig) -> str:
 
 
 # ----------------------------
-# Simple Wikipedia fetch (for /wiki endpoint)
+# Wikipedia fetch (used by /wiki endpoint)
 # ----------------------------
 def fetch_wiki_top_films(n: int = 10) -> List[Dict]:
     """
