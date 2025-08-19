@@ -1,17 +1,41 @@
 # run.py
-import os, sys, requests
+import os
+import sys
+import requests
 
-# Set this to your deployed Hugging Face Space URL
+# Default to your deployed Hugging Face Space URL
 SPACE_URL = "https://lokeshiitm-iitm-project-fastapi-02.hf.space"
 ANALYZE_URL = f"{SPACE_URL.rstrip('/')}/analyze"
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python run.py <csvfile>")
+        print("Usage: python run.py <csvfile-or-url>")
         sys.exit(1)
 
-    csvfile = sys.argv[1]
+    arg = sys.argv[1]
 
+    # If evaluator passes a URL instead of a CSV file
+    if arg.startswith("http://") or arg.startswith("https://"):
+        SPACE = arg.rstrip("/")
+        url = f"{SPACE}/analyze"
+
+        if not os.path.exists("questions.txt"):
+            print("questions.txt not found")
+            sys.exit(1)
+
+        with open("questions.txt", "rb") as qf:
+            files = {"questions": ("questions.txt", qf, "text/plain")}
+            data = {"mode": "eval"}
+            r = requests.post(url, files=files, data=data, timeout=120)
+
+        print("Mode: eval")
+        print("Status:", r.status_code)
+        print("Response:")
+        print(r.text)
+        return
+
+    # Normal case: user gives a local CSV file
+    csvfile = arg
     if not os.path.exists("questions.txt"):
         print("questions.txt not found")
         sys.exit(1)
@@ -24,7 +48,6 @@ def main():
             "questions": ("questions.txt", qf, "text/plain"),
             "data": (os.path.basename(csvfile), df, "text/csv"),
         }
-        # Always run in eval mode for grading
         data = {"mode": "eval"}
         r = requests.post(ANALYZE_URL, files=files, data=data, timeout=120)
 
