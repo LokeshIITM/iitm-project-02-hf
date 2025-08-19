@@ -3,10 +3,6 @@ import os
 import sys
 import requests
 
-# Default to your deployed Hugging Face Space URL
-SPACE_URL = "https://lokeshiitm-iitm-project-fastapi-02.hf.space"
-ANALYZE_URL = f"{SPACE_URL.rstrip('/')}/analyze"
-
 def main():
     if len(sys.argv) < 2:
         print("Usage: python run.py <csvfile-or-url>")
@@ -14,10 +10,10 @@ def main():
 
     arg = sys.argv[1]
 
-    # If evaluator passes a URL instead of a CSV file
+    # Case 1: Evaluator passes your Space URL
     if arg.startswith("http://") or arg.startswith("https://"):
-        SPACE = arg.rstrip("/")
-        url = f"{SPACE}/analyze"
+        space_url = arg.rstrip("/")
+        analyze_url = f"{space_url}/analyze"
 
         if not os.path.exists("questions.txt"):
             print("questions.txt not found")
@@ -25,8 +21,8 @@ def main():
 
         with open("questions.txt", "rb") as qf:
             files = {"questions": ("questions.txt", qf, "text/plain")}
-            data = {"mode": "eval"}
-            r = requests.post(url, files=files, data=data, timeout=120)
+            data = {"mode": "eval"}  # always eval mode
+            r = requests.post(analyze_url, files=files, data=data, timeout=120)
 
         print("Mode: eval")
         print("Status:", r.status_code)
@@ -34,7 +30,7 @@ def main():
         print(r.text)
         return
 
-    # Normal case: user gives a local CSV file
+    # Case 2: Local CSV file provided
     csvfile = arg
     if not os.path.exists("questions.txt"):
         print("questions.txt not found")
@@ -49,7 +45,9 @@ def main():
             "data": (os.path.basename(csvfile), df, "text/csv"),
         }
         data = {"mode": "eval"}
-        r = requests.post(ANALYZE_URL, files=files, data=data, timeout=120)
+        space_url = "https://lokeshiitm-iitm-project-fastapi-02.hf.space"
+        analyze_url = f"{space_url}/analyze"
+        r = requests.post(analyze_url, files=files, data=data, timeout=120)
 
     print("Mode: eval")
     print("Status:", r.status_code)
