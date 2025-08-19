@@ -53,14 +53,15 @@ def auto_analyze(df: pd.DataFrame) -> dict:
 
     # ---- numeric summaries ----
     for col in num_cols:
+        col_series = df[col].dropna()
         out["stats"][col] = {
-            "mean": float(df[col].mean()),
-            "median": float(df[col].median()),
-            "std": float(df[col].std())
+            "mean": float(np.nan_to_num(col_series.mean(), nan=0.0)),
+            "median": float(np.nan_to_num(col_series.median(), nan=0.0)),
+            "std": float(np.nan_to_num(col_series.std(), nan=0.0))
         }
         # histogram
         fig, ax = plt.subplots()
-        df[col].hist(ax=ax)
+        col_series.hist(ax=ax)
         ax.set_title(f"Histogram of {col}")
         out["plots"].append(_figure_to_base64(fig))
 
@@ -68,48 +69,59 @@ def auto_analyze(df: pd.DataFrame) -> dict:
     if len(num_cols) >= 2:
         x, y = num_cols[:2]
         corr = df[[x, y]].corr().iloc[0, 1]
-        out["stats"]["correlation"] = {f"{x}-{y}": round(float(corr), 4)}
+        out["stats"]["correlation"] = {f"{x}-{y}": round(float(np.nan_to_num(corr, nan=0.0)), 4)}
 
         fig, ax = plt.subplots()
         ax.scatter(df[x], df[y], alpha=0.5)
 
-        # regression line
-        xs = np.sort(df[x].dropna())
-        if len(xs) > 1:
-            coeffs = np.polyfit(df[x].dropna(), df[y].dropna(), 1)
-            ys = np.polyval(coeffs, xs)
-            ax.plot(xs, ys, linestyle=":", color="red", label="Regression line")
+        # regression line with safety
+        try:
+            xs = np.sort(df[x].dropna())
+            if len(xs) > 1:
+                coeffs = np.polyfit(df[x].dropna(), df[y].dropna(), 1)
+                ys = np.polyval(coeffs, xs)
+                ax.plot(xs, ys, linestyle=":", color="red", label="Regression line")
+                ax.legend()
+        except Exception:
+            pass
 
         ax.set_xlabel(x)
         ax.set_ylabel(y)
         ax.set_title(f"{x} vs {y}")
-        ax.legend()
         out["plots"].append(_figure_to_base64(fig))
 
     # ---- category vs numeric (bar) ----
     if num_cols and cat_cols:
         n, c = num_cols[0], cat_cols[0]
-        fig, ax = plt.subplots()
-        df.groupby(c)[n].mean().plot(kind="bar", ax=ax)
-        ax.set_title(f"Mean {n} by {c}")
-        out["plots"].append(_figure_to_base64(fig))
+        try:
+            fig, ax = plt.subplots()
+            df.groupby(c)[n].mean().plot(kind="bar", ax=ax)
+            ax.set_title(f"Mean {n} by {c}")
+            out["plots"].append(_figure_to_base64(fig))
+        except Exception:
+            pass
 
     # ---- datetime vs numeric (line) ----
     if num_cols and date_cols:
         n, d = num_cols[0], date_cols[0]
-        fig, ax = plt.subplots()
-        ax.plot(df[d], df[n], marker="o")
-        ax.set_title(f"{n} over {d}")
-        out["plots"].append(_figure_to_base64(fig))
+        try:
+            fig, ax = plt.subplots()
+            ax.plot(df[d], df[n], marker="o")
+            ax.set_title(f"{n} over {d}")
+            out["plots"].append(_figure_to_base64(fig))
+        except Exception:
+            pass
 
     # ---- network-like (if 2+ string cols, no numerics) ----
     if len(cat_cols) >= 2 and not num_cols:
-        src, tgt = cat_cols[:2]
-        G = nx.from_pandas_edgelist(df, source=src, target=tgt)
-
-        fig, ax = plt.subplots()
-        nx.draw(G, with_labels=True, node_size=500, ax=ax)
-        out["plots"].append(_figure_to_base64(fig))
+        try:
+            src, tgt = cat_cols[:2]
+            G = nx.from_pandas_edgelist(df, source=src, target=tgt)
+            fig, ax = plt.subplots()
+            nx.draw(G, with_labels=True, node_size=500, ax=ax)
+            out["plots"].append(_figure_to_base64(fig))
+        except Exception:
+            pass
 
     return out
 

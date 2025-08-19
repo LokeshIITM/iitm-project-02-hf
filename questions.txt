@@ -1,2 +1,1 @@
-How many rows are in the dataset?
-What is the average age?
+Show me a chart of sales by region

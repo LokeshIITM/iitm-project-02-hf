@@ -9,6 +9,7 @@ import pandas as pd
 import io
 import requests
 import json
+import re
 
 from utils.analysis import fetch_wiki_top_films, auto_analyze
 
@@ -16,13 +17,16 @@ from utils.analysis import fetch_wiki_top_films, auto_analyze
 app = FastAPI(
     title="Data Analyst Agent API",
     description="Upload questions.txt (and optionally data.csv/.xlsx) to get analysis via LLM + pandas",
-    version="3.1.0",
+    version="3.3.0",
 )
 
 # ---- LLM config ----
 AIPIPE_BASE = os.getenv("AIPIPE_BASE", "https://aipipe.org/openrouter/v1")
 AIPIPE_TOKEN = os.getenv("AIPIPE_TOKEN")
 AIPIPE_MODEL = os.getenv("AIPIPE_MODEL", "google/gemini-2.0-flash-lite-001")
+
+# Debug check (don’t print actual token, just True/False)
+print("DEBUG: AIPIPE_TOKEN loaded?", bool(AIPIPE_TOKEN))
 
 
 # ----------------- Helpers -----------------
@@ -52,6 +56,67 @@ def _df_preview(df: pd.DataFrame | None) -> str:
         return "DataFrame present but could not preview."
 
 
+# ----------------- normalize_output function -----------------
+def normalize_output(questions_text: str, preview: str, raw_result: dict) -> dict:
+    prompt = f"""
+    You are a strict JSON reformatter.
+
+    Question:
+    {questions_text}
+
+    Data preview:
+    {preview}
+
+    Raw analysis result:
+    {json.dumps(raw_result)}
+
+    Task:
+    - Return ONLY valid JSON with exactly the keys requested in the question.
+    - If a chart is requested, map the closest one from raw_result["plots"].
+    - Do not include explanations, just the JSON.
+    """
+
+    headers = {"Authorization": f"Bearer {AIPIPE_TOKEN}", "Content-Type": "application/json"}
+    try:
+        r = requests.post(
+            f"{AIPIPE_BASE}/chat/completions",
+            headers=headers,
+            json={
+                "model": AIPIPE_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0,
+                "max_tokens": 800,
+            },
+            timeout=30,
+        )
+        r.raise_for_status()
+        content = r.json()["choices"][0]["message"]["content"].strip()
+
+        # --- Clean wrappers like ```json ... ```
+        if content.startswith("```"):
+            content = re.sub(r"^```(json)?", "", content).strip("` \n")
+
+        # --- Extract the first valid { ... } JSON block ---
+        match = re.search(r"\{.*\}", content, re.DOTALL)
+        if match:
+            snippet = match.group(0)
+            # Truncate at the last closing brace to avoid trailing junk
+            last_brace = snippet.rfind("}")
+            snippet = snippet[: last_brace + 1]
+            return json.loads(snippet)
+
+        # Fallback: try raw parse
+        return json.loads(content)
+
+    except Exception as e:
+        print("LLM normalization failed:", e)
+        try:
+            if 'r' in locals():
+                print("LLM raw response (truncated):", r.text[:300])
+        except Exception:
+            pass
+        return raw_result
+
 # ----------------- Endpoints -----------------
 @app.post("/analyze")
 async def analyze_data(
@@ -75,62 +140,15 @@ async def analyze_data(
     df = _read_dataframe(data) if data else None
     preview = _df_preview(df)
 
-    # -------------------------
-    # Always do real analysis (both eval & play)
-    # -------------------------
-
-    # Ask LLM: only decide dataset type
-    schema_instruction = """
-You are a precise data analyst agent.
-Task:
-- Based on the question and preview, return ONLY the dataset type.
-- Valid types: "Sales", "Weather", "Titanic", "Network", or "Generic".
-- Return as JSON: {"dataset_type": "<type>"}.
-"""
-
-    user_prompt = f"questions.txt:\n{questions_text}\n\nData preview:\n{preview}"
-
-    payload = {
-        "model": AIPIPE_MODEL,
-        "messages": [
-            {"role": "system", "content": schema_instruction},
-            {"role": "user", "content": user_prompt},
-        ],
-        "max_tokens": max_tokens,
-    }
-
-    # Strict if eval, else play with knobs
-    if mode == "eval":
-        payload.update({"temperature": 0})
-    else:
-        payload.update({
-            "temperature": temperature,
-            "top_p": top_p,
-            "top_k": top_k,
-            "presence_penalty": presence_penalty,
-            "frequency_penalty": frequency_penalty,
-        })
-
-    dataset_type = "Generic"
+    # ---- Core pandas analysis ----
     try:
-        url = f"{AIPIPE_BASE}/chat/completions"
-        headers = {"Authorization": f"Bearer {AIPIPE_TOKEN}", "Content-Type": "application/json"}
-        r = requests.post(url, headers=headers, json=payload, timeout=30)
-        r.raise_for_status()
-        data = r.json()
-        llm_output = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-        parsed = json.loads(llm_output)
-        dataset_type = parsed.get("dataset_type", "Generic")
-    except Exception:
-        dataset_type = "Generic"  # fallback if LLM fails
-
-    # Call pandas engine
-    try:
-        result = auto_analyze(df)
-        result["dataset_type"] = dataset_type  # annotate
-        return JSONResponse(result)
+        raw_result = auto_analyze(df)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Auto analysis failed: {e}")
+
+    # ---- Schema normalization via LLM ----
+    final_result = normalize_output(questions_text, preview, raw_result)
+    return JSONResponse(final_result)
 
 
 @app.get("/wiki")
