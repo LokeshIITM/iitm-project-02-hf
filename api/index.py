@@ -10,6 +10,7 @@ import io
 import requests
 import json
 import re
+from typing import Dict, Any
 
 from utils.analysis import fetch_wiki_top_films, auto_analyze
 
@@ -25,8 +26,7 @@ AIPIPE_BASE = os.getenv("AIPIPE_BASE", "https://aipipe.org/openrouter/v1")
 AIPIPE_TOKEN = os.getenv("AIPIPE_TOKEN")
 AIPIPE_MODEL = os.getenv("AIPIPE_MODEL", "google/gemini-2.0-flash-lite-001")
 
-# Debug check (don’t print actual token, just True/False)
-print("DEBUG: AIPIPE_TOKEN loaded?", bool(AIPIPE_TOKEN))
+print("DEBUG: AIPIPE_TOKEN loaded?", bool(AIPIPE_TOKEN))  # Debug check
 
 
 # ----------------- Helpers -----------------
@@ -56,10 +56,15 @@ def _df_preview(df: pd.DataFrame | None) -> str:
         return "DataFrame present but could not preview."
 
 
-# ----------------- normalize_output function -----------------
-def normalize_output(questions_text: str, preview: str, raw_result: dict) -> dict:
+# ----------------- Robust normalize_output -----------------
+def normalize_output(questions_text: str, preview: str, raw_result: dict) -> Dict[str, Any]:
+    """
+    Normalizes the raw analysis result into a valid JSON object using an LLM.
+    This version is robust to common LLM formatting issues.
+    """
     prompt = f"""
-    You are a strict JSON reformatter.
+    You are a strict JSON reformatter. Your task is to take a natural language question
+    and a raw analysis result and return ONLY a single JSON object.
 
     Question:
     {questions_text}
@@ -68,15 +73,17 @@ def normalize_output(questions_text: str, preview: str, raw_result: dict) -> dic
     {preview}
 
     Raw analysis result:
-    {json.dumps(raw_result)}
+    {json.dumps(raw_result, indent=2)}
 
     Task:
-    - Return ONLY valid JSON with exactly the keys requested in the question.
+    - Based on the question, identify the required output keys.
+    - Map the closest relevant values from the "raw analysis result" to those keys.
     - If a chart is requested, map the closest one from raw_result["plots"].
-    - Do not include explanations, just the JSON.
+    - Return ONLY the final JSON object. No explanations, no code fences.
     """
 
     headers = {"Authorization": f"Bearer {AIPIPE_TOKEN}", "Content-Type": "application/json"}
+
     try:
         r = requests.post(
             f"{AIPIPE_BASE}/chat/completions",
@@ -84,38 +91,49 @@ def normalize_output(questions_text: str, preview: str, raw_result: dict) -> dic
             json={
                 "model": AIPIPE_MODEL,
                 "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0,
+                "temperature": 0.0,
                 "max_tokens": 800,
             },
-            timeout=30,
+            timeout=45,
         )
         r.raise_for_status()
         content = r.json()["choices"][0]["message"]["content"].strip()
+        print("LLM raw response (truncated):", content[:400])  # debug
 
-        # --- Clean wrappers like ```json ... ```
-        if content.startswith("```"):
-            content = re.sub(r"^```(json)?", "", content).strip("` \n")
-
-        # --- Extract the first valid { ... } JSON block ---
-        match = re.search(r"\{.*\}", content, re.DOTALL)
+        # Try to extract first JSON object in response
+        match = re.search(r'\{.*\}', content, re.DOTALL)
         if match:
-            snippet = match.group(0)
-            # Truncate at the last closing brace to avoid trailing junk
-            last_brace = snippet.rfind("}")
-            snippet = snippet[: last_brace + 1]
-            return json.loads(snippet)
+            json_string = match.group(0)
 
-        # Fallback: try raw parse
-        return json.loads(content)
+            while True:
+                try:
+                    return json.loads(json_string)
+                except json.JSONDecodeError as e:
+                    print(f"JSONDecodeError: {e}")
 
-    except Exception as e:
-        print("LLM normalization failed:", e)
-        try:
-            if 'r' in locals():
-                print("LLM raw response (truncated):", r.text[:300])
-        except Exception:
-            pass
+                    # Common fix: unquoted keys
+                    if e.msg == "Expecting property name enclosed in double quotes":
+                        json_string = re.sub(r'([{\s,])(\w+):', r'\1"\2":', json_string)
+                        continue
+
+                    # Otherwise, trim at last closing brace and retry
+                    last_brace_index = json_string.rfind('}')
+                    if last_brace_index != -1:
+                        json_string = json_string[:last_brace_index + 1]
+                        continue
+
+                    break
+
+        print("No valid JSON object found in LLM response.")
         return raw_result
+
+    except requests.exceptions.RequestException as req_e:
+        print(f"LLM request failed: {req_e}")
+        return raw_result
+    except Exception as e:
+        print(f"Unexpected error in normalize_output: {e}")
+        return raw_result
+
 
 # ----------------- Endpoints -----------------
 @app.post("/analyze")
